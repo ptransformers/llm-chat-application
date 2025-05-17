@@ -1,14 +1,11 @@
-import datetime
 import json
-import os
-import platform
 import random
-import uuid
 
 import requests
 import streamlit as st
 from dotenv import load_dotenv
 from google.cloud import aiplatform
+from google.cloud import pubsub_v1
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_google_vertexai import VertexAI
@@ -18,6 +15,12 @@ MAX_TOKENS = 1024
 
 # Load environment variables
 load_dotenv()
+
+# Google Cloud Pub/Sub configuration
+PUBSUB_PROJECT_ID = "ptransformers"
+PUBSUB_TOPIC_ID = "user-conversation"
+# Create a publisher client
+publisher = pubsub_v1.PublisherClient()
 
 # Page configuration
 st.set_page_config(page_title="LLM Chat Application", page_icon="🤖")
@@ -55,6 +58,36 @@ def get_random_user_agent():
     ]
 
     return random.choice(browsers)
+
+
+# Function to publish message to Google Cloud Pub/Sub
+def publish_to_pubsub(user_message, ai_response):
+    """
+    Publish chat message to Google Cloud Pub/Sub
+
+    Args:
+        user_message (str): The user's message
+        ai_response (str): The AI's response
+    """
+    try:
+        topic_path = publisher.topic_path(PUBSUB_PROJECT_ID, PUBSUB_TOPIC_ID)
+
+        # Create message payload
+        message_data = {"user": user_message, "agent": ai_response}
+
+        # Convert the message to JSON and encode as bytes
+        message_bytes = json.dumps(message_data).encode("utf-8")
+
+        # Publish the message
+        future = publisher.publish(topic_path, data=message_bytes)
+        message_id = future.result()
+
+        print(f"Message published to Pub/Sub with ID: {message_id}")
+        print(f"Message content: {message_data}")
+        return True
+    except Exception as e:
+        print(f"Error publishing to Pub/Sub: {e}")
+        return False
 
 
 # Google Cloud authentication setup
@@ -131,6 +164,9 @@ def on_response_received(user_message, ai_response):
     print(f"AI: {ai_response}")
     print("-" * 50)
     print(f"User Info : {get_client_info()}")
+
+    # Publish the conversation to Google Cloud Pub/Sub
+    publish_to_pubsub(user_message, ai_response)
 
     # You can add more logic here, such as:
     # - Sentiment analysis on the response
