@@ -1,12 +1,17 @@
+import datetime
+import json
 import os
+import platform
+import random
+import uuid
 
+import requests
 import streamlit as st
 from dotenv import load_dotenv
 from google.cloud import aiplatform
 from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_google_vertexai import VertexAI
-
 
 TEMPERATURE = 0.7
 MAX_TOKENS = 1024
@@ -19,6 +24,37 @@ st.set_page_config(page_title="LLM Chat Application", page_icon="🤖")
 
 # App header
 st.title("🤖 LLM Chat Application")
+
+
+# Function to generate random User-Agent
+def get_random_user_agent():
+    """Generate a random User-Agent string"""
+    # List of common browsers
+    browsers = [
+        # Chrome
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 "
+        "Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 "
+        "Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 "
+        "Safari/537.36",
+        # Firefox
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/109.0",
+        "Mozilla/5.0 (X11; Linux i686; rv:109.0) Gecko/20100101 Firefox/109.0",
+        # Safari
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.3 "
+        "Safari/605.1.15",
+        # Edge
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 "
+        "Safari/537.36 Edg/109.0.1518.78",
+        # Opera
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 "
+        "Safari/537.36 OPR/95.0.0.0",
+    ]
+
+    return random.choice(browsers)
 
 
 # Google Cloud authentication setup
@@ -37,6 +73,49 @@ def initialize_vertex_ai():
         return None, None
 
 
+# Get IP and user agent using external service
+def get_client_info():
+    """Get client IP address and user agent using external service"""
+    try:
+        # Generate a random User-Agent for this request
+        random_user_agent = get_random_user_agent()
+
+        # Use ipify API to get IP address
+        ip_response = requests.get(
+            "https://api.ipify.org?format=json",
+            timeout=5,
+            headers={"User-Agent": random_user_agent},
+        )
+        ip_data = ip_response.json()
+        ip_address = ip_data.get("ip", "Unknown")
+
+        # Get additional IP info with the same random User-Agent
+        geo_response = requests.get(
+            f"https://ipapi.co/{ip_address}/json/",
+            timeout=5,
+            headers={"User-Agent": random_user_agent},
+        )
+        geo_data = geo_response.json()
+
+        client_info = {
+            "ip_address": ip_address,
+            "city": geo_data.get("city", "Unknown"),
+            "region": geo_data.get("region", "Unknown"),
+            "country": geo_data.get("country_name", "Unknown"),
+            "user_agent": random_user_agent,  # Include the random User-Agent in the client info
+        }
+        return client_info
+    except Exception as e:
+        print(f"Error getting client info: {e}")
+        return {
+            "ip_address": "Unknown",
+            "city": "Unknown",
+            "region": "Unknown",
+            "country": "Unknown",
+            "user_agent": "Unknown",
+        }
+
+
 # Callback function that runs after receiving a response
 def on_response_received(user_message, ai_response):
     """
@@ -50,6 +129,8 @@ def on_response_received(user_message, ai_response):
     # Log the conversation (example callback action)
     print(f"User: {user_message}")
     print(f"AI: {ai_response}")
+    print("-" * 50)
+    print(f"User Info : {get_client_info()}")
 
     # You can add more logic here, such as:
     # - Sentiment analysis on the response
@@ -122,8 +203,7 @@ if prompt := st.chat_input("Enter your message"):
             with st.spinner("Thinking..."):
                 try:
                     # Send question to LLM
-                    response = st.session_state.conversation.predict(
-                        input=prompt)
+                    response = st.session_state.conversation.predict(input=prompt)
                     st.markdown(response)
                     # Save response
                     st.session_state.messages.append(
