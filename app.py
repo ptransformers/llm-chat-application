@@ -75,7 +75,7 @@ if st.session_state.conversation is None:
         if project_id and region:
             # Set default model parameters
             model_name = "gemini-2.0-flash-lite-001"
-            temperature = TEMPERATOR
+            temperature = TEMPERATURE
             max_tokens = MAX_TOKENS
 
             # Set up LLM model
@@ -122,7 +122,8 @@ if prompt := st.chat_input("Enter your message"):
             with st.spinner("Thinking..."):
                 try:
                     # Send question to LLM
-                    response = st.session_state.conversation.predict(input=prompt)
+                    response = st.session_state.conversation.predict(
+                        input=prompt)
                     st.markdown(response)
                     # Save response
                     st.session_state.messages.append(
