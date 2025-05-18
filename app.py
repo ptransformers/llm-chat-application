@@ -1,3 +1,4 @@
+import os  # Add this import for environment variables
 import json
 import random
 
@@ -10,6 +11,10 @@ from langchain.chains import ConversationChain
 from langchain.memory import ConversationBufferMemory
 from langchain_google_vertexai import VertexAI
 
+from openai import OpenAI
+from elasticsearch import Elasticsearch
+import os
+
 TEMPERATURE = 0.7
 MAX_TOKENS = 1024
 
@@ -21,6 +26,18 @@ PUBSUB_PROJECT_ID = "ptransformers"
 PUBSUB_TOPIC_ID = "user-conversation"
 # Create a publisher client
 publisher = pubsub_v1.PublisherClient()
+
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Elasticsearch configuration
+ES_URL = os.getenv("ES_URL")
+ES_API_KEY = os.getenv("ES_API_KEY")
+es = Elasticsearch(
+    ES_URL,
+    api_key=ES_API_KEY,
+)
 
 # Page configuration
 st.set_page_config(page_title="LLM Chat Application", page_icon="🤖")
@@ -106,6 +123,40 @@ def initialize_vertex_ai():
         return None, None
 
 
+def get_query_vector(input_text: str):
+    response = client.embeddings.create(
+        input=input_text,
+        model="text-embedding-3-small"
+    )
+    return response.data[0].embedding
+
+
+def search_top_conversation(vector):
+    print("started to search")
+    try:
+        response = es.search(
+            index="user_insights",
+            knn={
+                "field": "conversation_vector",
+                "query_vector": vector,
+                "k": 1,
+                "num_candidates": 10
+            },
+            source=["conversation"]
+        )
+
+        hits = response['hits']['hits']
+        print(hits)
+        if hits:
+            return hits[0]['_source'].get('conversation')
+        else:
+            return None
+
+    except Exception as e:
+        print("Search error:", e)
+        return None
+
+
 # Get IP and user agent using external service
 def get_client_info():
     """Get client IP address and user agent using external service"""
@@ -135,7 +186,8 @@ def get_client_info():
             "city": geo_data.get("city", "Unknown"),
             "region": geo_data.get("region", "Unknown"),
             "country": geo_data.get("country_name", "Unknown"),
-            "user_agent": random_user_agent,  # Include the random User-Agent in the client info
+            # Include the random User-Agent in the client info
+            "user_agent": random_user_agent,
         }
         return client_info
     except Exception as e:
@@ -238,8 +290,23 @@ if prompt := st.chat_input("Enter your message"):
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
+
+                    #  Embed the user query
+                    query_vector = get_query_vector(prompt)
+
+                    #  Search similar past conversation
+                    similar_convo = search_top_conversation(query_vector)
+
+                    print(similar_convo)
+
+                    # If found, inject it into memory
+                    if similar_convo:
+                        st.session_state.conversation.memory.chat_memory.add_user_message(
+                            f"Related Info Retrieved from Memory : {similar_convo}"
+                        )
                     # Send question to LLM
-                    response = st.session_state.conversation.predict(input=prompt)
+                    response = st.session_state.conversation.predict(
+                        input=prompt)
                     st.markdown(response)
                     # Save response
                     st.session_state.messages.append(
