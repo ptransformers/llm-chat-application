@@ -1,5 +1,7 @@
 # LLM Chat Application
 
+Cloud run hosted webapp url - https://llm-chat-application-12098634125.us-central1.run.app/
+
 ## Overview
 
 This application is a conversational chatbot powered by Google Cloud Vertex AI's Gemini models. It provides a
