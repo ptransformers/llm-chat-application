@@ -42,7 +42,7 @@ def read_prompt_from_gcs(bucket_name, file_name):
 
 # GCS configuration
 GCS_BUCKET_NAME = "pt-prompt-templates"
-GCS_FILE_NAME = "new_prompt.txt"
+GCS_FILE_NAME = "conversation_summary_prompt"
 
 # Read existing prompt from GCS
 existing_prompt = read_prompt_from_gcs(GCS_BUCKET_NAME, GCS_FILE_NAME)
